@@ -550,6 +550,7 @@ export default function SongkranRaffle() {
               Festival
             </span>
           </h1>
+          <h2 className="text-4xl md:text-2xl font-bold mb-2 drop-shadow-md">Create By Roger.W</h2>
         </div>
 
         <div className="max-w-5xl mx-auto mb-8">
