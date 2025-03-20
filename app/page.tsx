@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   Save,
   FolderOpen,
+  Settings,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { motion, AnimatePresence } from "framer-motion";
@@ -77,6 +78,7 @@ type PrizeTier = {
   name: string;
   amount: string | number;
   quantity: number;
+  winnersPerRound: number;
   active: boolean;
   drawnCount: number;
   winners: string[];
@@ -89,12 +91,12 @@ export default function SongkranRaffle() {
   const [isSpinning, setIsSpinning] = useState(false);
   const [fileImported, setFileImported] = useState(false);
   const [triggerConfetti, setTriggerConfetti] = useState(false);
-  const [isClient, setIsClient] = useState(false); // เพิ่ม state เพื่อเช็ก client-side
+  const [isClient, setIsClient] = useState(false);
+  const [isControlPanelOpen, setIsControlPanelOpen] = useState(false); // เพิ่ม state ใหม่
   const fileInputRef = useRef<HTMLInputElement>(null);
   const spinnerRef = useRef<HTMLDivElement>(null);
   const spinIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const WINNERS_PER_ROUND = 10;
+  const controlWindowRef = useRef<Window | null>(null);
 
   const [prizeTiers, setPrizeTiers] = useState<PrizeTier[]>([
     {
@@ -102,6 +104,7 @@ export default function SongkranRaffle() {
       name: "รางวัลที่ 9",
       amount: "ของขวัญบริษัท",
       quantity: 20,
+      winnersPerRound: 10,
       active: true,
       drawnCount: 0,
       winners: [],
@@ -111,6 +114,7 @@ export default function SongkranRaffle() {
       name: "รางวัลที่ 8",
       amount: 300,
       quantity: 50,
+      winnersPerRound: 10,
       active: false,
       drawnCount: 0,
       winners: [],
@@ -120,6 +124,7 @@ export default function SongkranRaffle() {
       name: "รางวัลที่ 7",
       amount: 600,
       quantity: 40,
+      winnersPerRound: 8,
       active: false,
       drawnCount: 0,
       winners: [],
@@ -129,6 +134,7 @@ export default function SongkranRaffle() {
       name: "รางวัลที่ 6",
       amount: 800,
       quantity: 30,
+      winnersPerRound: 5,
       active: false,
       drawnCount: 0,
       winners: [],
@@ -138,6 +144,7 @@ export default function SongkranRaffle() {
       name: "รางวัลที่ 5",
       amount: 1000,
       quantity: 15,
+      winnersPerRound: 5,
       active: false,
       drawnCount: 0,
       winners: [],
@@ -147,6 +154,7 @@ export default function SongkranRaffle() {
       name: "รางวัลที่ 4",
       amount: 2000,
       quantity: 6,
+      winnersPerRound: 3,
       active: false,
       drawnCount: 0,
       winners: [],
@@ -156,6 +164,7 @@ export default function SongkranRaffle() {
       name: "รางวัลที่ 3",
       amount: 3000,
       quantity: 4,
+      winnersPerRound: 4,
       active: false,
       drawnCount: 0,
       winners: [],
@@ -165,6 +174,7 @@ export default function SongkranRaffle() {
       name: "รางวัลที่ 2",
       amount: 5000,
       quantity: 2,
+      winnersPerRound: 2,
       active: false,
       drawnCount: 0,
       winners: [],
@@ -174,11 +184,65 @@ export default function SongkranRaffle() {
       name: "รางวัลที่ 1",
       amount: 8000,
       quantity: 1,
+      winnersPerRound: 1,
       active: false,
       drawnCount: 0,
       winners: [],
     },
   ]);
+
+  // ฟังคำสั่งจาก ControlPanel
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === "COMMAND") {
+        switch (event.data.command) {
+          case "TOGGLE_SPINNING":
+            toggleSpinning();
+            break;
+          case "RESET":
+            resetRaffle();
+            break;
+          case "PREVIOUS_TIER":
+            moveToPreviousPrizeTier();
+            break;
+          case "NEXT_TIER":
+            moveToNextPrizeTier();
+            break;
+        }
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [isSpinning, prizeTiers, remainingEmployees, currentWinners]);
+
+  // อัปเดตสถานะไปยัง ControlPanel และตรวจสอบเมื่อหน้าต่างปิด
+  useEffect(() => {
+    if (controlWindowRef.current) {
+      controlWindowRef.current.postMessage(
+        {
+          type: "UPDATE_STATE",
+          isSpinning,
+          canGoBack: prizeTiers.findIndex((prize) => prize.active) > 0,
+          canGoNext:
+            prizeTiers.findIndex((prize) => prize.active) <
+            prizeTiers.length - 1,
+        },
+        "*"
+      );
+
+      // ตรวจสอบว่าหน้าต่างถูกปิดหรือไม่
+      const checkWindowClosed = setInterval(() => {
+        if (controlWindowRef.current?.closed) {
+          setIsControlPanelOpen(false);
+          controlWindowRef.current = null;
+          clearInterval(checkWindowClosed);
+        }
+      }, 500);
+
+      return () => clearInterval(checkWindowClosed);
+    }
+  }, [isSpinning, prizeTiers]);
 
   // ตั้งค่า isClient เป็น true หลังจาก mount
   useEffect(() => {
@@ -223,6 +287,9 @@ export default function SongkranRaffle() {
     return () => {
       if (spinIntervalRef.current) {
         clearInterval(spinIntervalRef.current);
+      }
+      if (controlWindowRef.current) {
+        controlWindowRef.current.close();
       }
     };
   }, []);
@@ -282,6 +349,23 @@ export default function SongkranRaffle() {
     }
   };
 
+  const openControlPanel = () => {
+    if (controlWindowRef.current && !controlWindowRef.current.closed) {
+      controlWindowRef.current.focus();
+      return;
+    }
+
+    const controlWindow = window.open(
+      "/control-panel",
+      "ControlPanel",
+      "width=600,height=400"
+    );
+    if (controlWindow) {
+      controlWindowRef.current = controlWindow;
+      setIsControlPanelOpen(true); // ตั้งค่าเมื่อเปิดหน้าต่าง
+    }
+  };
+
   const getCurrentActivePrize = (): PrizeTier | null => {
     const activePrize = prizeTiers.find((prize) => prize.active);
     return activePrize || null;
@@ -321,7 +405,7 @@ export default function SongkranRaffle() {
     }
 
     const remainingForPrize = activePrize.quantity - activePrize.drawnCount;
-    const winnerCount = Math.min(WINNERS_PER_ROUND, remainingForPrize);
+    const winnerCount = Math.min(activePrize.winnersPerRound, remainingForPrize);
 
     if (remainingEmployees.length < winnerCount) {
       alert(
@@ -393,6 +477,7 @@ export default function SongkranRaffle() {
         name: "รางวัลที่ 9",
         amount: "ของขวัญบริษัท",
         quantity: 20,
+        winnersPerRound: 10,
         active: true,
         drawnCount: 0,
         winners: [],
@@ -402,6 +487,7 @@ export default function SongkranRaffle() {
         name: "รางวัลที่ 8",
         amount: 300,
         quantity: 50,
+        winnersPerRound: 10,
         active: false,
         drawnCount: 0,
         winners: [],
@@ -411,6 +497,7 @@ export default function SongkranRaffle() {
         name: "รางวัลที่ 7",
         amount: 600,
         quantity: 40,
+        winnersPerRound: 8,
         active: false,
         drawnCount: 0,
         winners: [],
@@ -420,6 +507,7 @@ export default function SongkranRaffle() {
         name: "รางวัลที่ 6",
         amount: 800,
         quantity: 30,
+        winnersPerRound: 5,
         active: false,
         drawnCount: 0,
         winners: [],
@@ -429,6 +517,7 @@ export default function SongkranRaffle() {
         name: "รางวัลที่ 5",
         amount: 1000,
         quantity: 15,
+        winnersPerRound: 5,
         active: false,
         drawnCount: 0,
         winners: [],
@@ -438,6 +527,7 @@ export default function SongkranRaffle() {
         name: "รางวัลที่ 4",
         amount: 2000,
         quantity: 6,
+        winnersPerRound: 3,
         active: false,
         drawnCount: 0,
         winners: [],
@@ -447,6 +537,7 @@ export default function SongkranRaffle() {
         name: "รางวัลที่ 3",
         amount: 3000,
         quantity: 4,
+        winnersPerRound: 4,
         active: false,
         drawnCount: 0,
         winners: [],
@@ -456,6 +547,7 @@ export default function SongkranRaffle() {
         name: "รางวัลที่ 2",
         amount: 5000,
         quantity: 2,
+        winnersPerRound: 2,
         active: false,
         drawnCount: 0,
         winners: [],
@@ -465,6 +557,7 @@ export default function SongkranRaffle() {
         name: "รางวัลที่ 1",
         amount: 8000,
         quantity: 1,
+        winnersPerRound: 1,
         active: false,
         drawnCount: 0,
         winners: [],
@@ -489,8 +582,10 @@ export default function SongkranRaffle() {
   };
 
   const getWinnersForNextRound = () => {
-    const remainingForPrize = getRemainingWinnersForCurrentPrize();
-    return Math.min(WINNERS_PER_ROUND, remainingForPrize);
+    const activePrize = getCurrentActivePrize();
+    if (!activePrize) return 0;
+    const remainingForPrize = activePrize.quantity - activePrize.drawnCount;
+    return Math.min(activePrize.winnersPerRound, remainingForPrize);
   };
 
   return (
@@ -503,7 +598,6 @@ export default function SongkranRaffle() {
       }}
     >
       <div className="absolute inset-0 bg-white/40 dark:bg-black/60 backdrop-blur-sm"></div>
-      {/* Render component เหล่านี้เฉพาะใน client */}
       {isClient && (
         <>
           <WaterDrops />
@@ -518,7 +612,7 @@ export default function SongkranRaffle() {
             className="text-4xl md:text-5xl font-bold mb-2 drop-shadow-md"
             style={{
               fontFamily: "'Dancing Script', cursive",
-              color: "#00A1E4", // สีน้ำเงิน
+              color: "#00A1E4",
               textShadow: "2px 2px 4px rgba(0, 0, 0, 0.2)",
               fontSize: 125,
             }}
@@ -526,7 +620,7 @@ export default function SongkranRaffle() {
             Songkran{" "}
             <span
               style={{
-                color: "#FFD700", // สีเหลือง
+                color: "#FFD700",
               }}
             >
               Festival
@@ -636,113 +730,18 @@ export default function SongkranRaffle() {
                 </div>
               </Card>
 
-              <div className="flex flex-wrap gap-3 justify-center mb-4">
-                <Button
-                  onClick={toggleSpinning}
-                  disabled={
-                    remainingEmployees.length < getWinnersForNextRound() ||
-                    !getCurrentActivePrize() ||
-                    getRemainingWinnersForCurrentPrize() <= 0
-                  }
-                  className={
-                    isSpinning
-                      ? "bg-red-500 hover:bg-red-600 text-white"
-                      : "bg-green-500 hover:bg-green-600 text-white"
-                  }
-                  size="lg"
-                >
-                  {isSpinning ? (
-                    <>
-                      <Square className="mr-2 h-4 w-4" /> Stop
-                    </>
-                  ) : (
-                    <>
-                      <Play className="mr-2 h-4 w-4" /> Start
-                    </>
-                  )}
-                </Button>
-
-                <Button
-                  onClick={resetRaffle}
-                  variant="outline"
-                  className="border-blue-500 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900"
-                  size="lg"
-                >
-                  Reset
-                </Button>
-
-                <div className="flex gap-2">
+              {!isControlPanelOpen && ( // แสดงปุ่มเฉพาะเมื่อหน้าต่างควบคุมไม่ได้เปิด
+                <div className="flex justify-center mb-4">
                   <Button
-                    onClick={moveToPreviousPrizeTier}
-                    variant="outline"
-                    className="border-pink-500 text-pink-500 hover:bg-pink-50 dark:hover:bg-pink-900"
-                    disabled={
-                      prizeTiers.findIndex((prize) => prize.active) <= 0 ||
-                      isSpinning
-                    }
+                    onClick={openControlPanel}
+                    className="bg-purple-500 hover:bg-purple-600 text-white"
                     size="lg"
                   >
-                    <ChevronLeft className="h-5 w-5" />
-                    Back
-                  </Button>
-
-                  <Button
-                    onClick={moveToNextPrizeTier}
-                    variant="outline"
-                    className="border-pink-500 text-pink-500 hover:bg-pink-50 dark:hover:bg-pink-900"
-                    disabled={
-                      prizeTiers.findIndex((prize) => prize.active) >=
-                        prizeTiers.length - 1 ||
-                      !getCurrentActivePrize() ||
-                      isSpinning
-                    }
-                    size="lg"
-                  >
-                    Next
-                    <ChevronRight className="h-5 w-5 ml-1" />
+                    <Settings className="mr-2 h-4 w-4" />
+                    Open Control Panel
                   </Button>
                 </div>
-              </div>
-
-              {/* <Card className="p-6 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-blue-200 dark:border-blue-700 shadow-lg">
-                <h3 className="text-xl font-semibold text-blue-600 dark:text-blue-300 mb-4 flex items-center">
-                  <FolderOpen className="mr-2 h-5 w-5" />
-                  Winners Summary
-                </h3>
-                <div className="space-y-4">
-                  {prizeTiers.map(
-                    (prize) =>
-                      prize.winners.length > 0 && (
-                        <div
-                          key={prize.tier}
-                          className="border-b pb-3 last:border-b-0"
-                        >
-                          <h4 className="font-medium text-lg text-blue-500 dark:text-blue-300 mb-2">
-                            {prize.name} - {formatPrizeAmount(prize.amount)}
-                            <span className="text-sm ml-2">
-                              ({prize.winners.length}/{prize.quantity})
-                            </span>
-                          </h4>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                            {prize.winners.map((winner, index) => (
-                              <div
-                                key={index}
-                                className="bg-blue-50 dark:bg-blue-900/30 p-2 rounded text-sm"
-                              >
-                                {winner}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )
-                  )}
-                  {!prizeTiers.some((prize) => prize.winners.length > 0) && (
-                    <p className="text-gray-500 dark:text-gray-400 text-center italic">
-                      No winners drawn yet.
-                    </p>
-                  )}
-                </div>
-              </Card> */}
+              )}
             </>
           )}
         </div>
