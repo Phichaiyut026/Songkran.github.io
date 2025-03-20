@@ -493,24 +493,6 @@ export default function SongkranRaffle() {
     return Math.min(WINNERS_PER_ROUND, remainingForPrize);
   };
 
-  const exportWinners = () => {
-    let csvContent = "Prize,Amount,Winner\n";
-    prizeTiers.forEach((prize) => {
-      prize.winners.forEach((winner) => {
-        csvContent += `"${prize.name}","${prize.amount}","${winner}"\n`;
-      });
-    });
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "songkran-winners.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
     <div
       className="min-h-screen relative overflow-hidden"
@@ -538,7 +520,7 @@ export default function SongkranRaffle() {
               fontFamily: "'Dancing Script', cursive",
               color: "#00A1E4", // สีน้ำเงิน
               textShadow: "2px 2px 4px rgba(0, 0, 0, 0.2)",
-              fontSize: 92,
+              fontSize: 125,
             }}
           >
             Songkran{" "}
@@ -550,7 +532,6 @@ export default function SongkranRaffle() {
               Festival
             </span>
           </h1>
-          <h2 className="text-4xl md:text-2xl font-bold mb-2 drop-shadow-md">Create By Roger.W</h2>
         </div>
 
         <div className="max-w-5xl mx-auto mb-8">
@@ -612,7 +593,11 @@ export default function SongkranRaffle() {
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.8 }}
-                            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 z-10 w-full"
+                            className={`grid gap-3 z-10 w-full ${
+                              currentWinners.length <= 2
+                                ? "grid-cols-1 max-w-md mx-auto"
+                                : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3"
+                            }`}
                           >
                             {currentWinners.map((winner, index) => (
                               <div
@@ -634,7 +619,7 @@ export default function SongkranRaffle() {
                           >
                             {isSpinning
                               ? "Spinning..."
-                              : `Click Start to draw ${getWinnersForNextRound()} winners`}
+                              : `กด Start เพื่อเริ่ม`}
                           </motion.div>
                         )}
                       </AnimatePresence>
@@ -717,19 +702,9 @@ export default function SongkranRaffle() {
                     <ChevronRight className="h-5 w-5 ml-1" />
                   </Button>
                 </div>
-
-                <Button
-                  onClick={exportWinners}
-                  variant="outline"
-                  className="border-yellow-500 text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/30"
-                  size="lg"
-                >
-                  <Save className="mr-2 h-4 w-4" />
-                  Export Winners
-                </Button>
               </div>
 
-              <Card className="p-6 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-blue-200 dark:border-blue-700 shadow-lg">
+              {/* <Card className="p-6 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-blue-200 dark:border-blue-700 shadow-lg">
                 <h3 className="text-xl font-semibold text-blue-600 dark:text-blue-300 mb-4 flex items-center">
                   <FolderOpen className="mr-2 h-5 w-5" />
                   Winners Summary
@@ -767,7 +742,7 @@ export default function SongkranRaffle() {
                     </p>
                   )}
                 </div>
-              </Card>
+              </Card> */}
             </>
           )}
         </div>
